@@ -1,3 +1,10 @@
+
+import ctypes
+import os
+import sys
+import logging
+import logging.handlers
+
 import win32serviceutil
 import win32service
 import win32event
@@ -13,7 +20,34 @@ GUID_DEVINTERFACE_USB_DEVICE = "{A5DCBF10-6530-11D2-901F-00C04FB951ED}"
 DBT_DEVICEARRIVAL = 0x8000
 DBT_DEVICEREMOVECOMPLETE = 0x8004
 
-import ctypes
+# https://stackoverflow.com/questions/51194784
+log_file = os.path.splitext(__file__)[0] + ".log"
+l = logging.getLogger()
+l.setLevel(logging.INFO)
+f = logging.Formatter(
+    '%(asctime)s %(process)d:%(thread)d %(name)s %(levelname)-8s %(message)s'
+)
+# TODO why this handler in addition to rotating file thing below?
+h = logging.StreamHandler(sys.stdout)
+h.setLevel(logging.NOTSET)
+h.setFormatter(f)
+l.addHandler(h)
+h = logging.handlers.RotatingFileHandler(log_file, maxBytes=1024**2,
+    backupCount=1
+)
+h.setLevel(logging.NOTSET)
+h.setFormatter(f)
+l.addHandler(h)
+del h, f
+# Hook to log unhandled exceptions
+def excepthook(type,value,traceback):
+    logging.error("Unhandled exception occured",exc_info=(type,value,traceback))
+    #Don't need another copy of traceback on stderr
+    if old_excepthook!=sys.__excepthook__:
+        old_excepthook(type,value,traceback)
+old_excepthook = sys.excepthook
+sys.excepthook = excepthook
+del log_file, os
 
 
 # Cut-down clone of UnpackDEV_BROADCAST from win32gui_struct, to be
@@ -100,11 +134,13 @@ class DeviceEventService(win32serviceutil.ServiceFramework):
     # Standard stuff for stopping and running service; nothing
     # specific to device notifications
     def SvcStop(self):
+        l.info('stopping service')
         self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING)
         win32event.SetEvent(self.hWaitStop)
 
 
     def SvcDoRun(self):
+        l.info('starting service')
         win32event.WaitForSingleObject(self.hWaitStop, win32event.INFINITE)
         servicemanager.LogMsg(
           servicemanager.EVENTLOG_INFORMATION_TYPE,
@@ -114,4 +150,8 @@ class DeviceEventService(win32serviceutil.ServiceFramework):
 
 
 if __name__=='__main__':
+    # TODO way to detect (successful) install, to automatically run postinstall
+    # stuff, so service actually works (rather than 1053 error)?
+    # post-install stuff suggested here:
+    # https://stackoverflow.com/questions/13466053
     win32serviceutil.HandleCommandLine(DeviceEventService)
