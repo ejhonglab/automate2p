@@ -5,15 +5,14 @@ Automate few startup tasks on two-photon imaging computer.
 
 import os
 from os.path import join, split, exists
-from datetime import datetime
 import subprocess as sp
 
 import psutil
 
+from util import todays_dir
 
-data_root = r'D:\mb_team'
 
-first_fly_dir = join(data_root, datetime.today().strftime('%Y-%m-%d'), '1')
+first_fly_dir = join(todays_dir, '1')
 
 # TODO odor_pid directory too? behind flag?
 
@@ -31,7 +30,7 @@ programs_to_open = [
 
     r'C:\Program Files\Thorlabs\ThorImageLS 4.0\ThorImageLS.exe',
     r'C:\Program Files\Thorlabs\ThorSync 4.0\ThorSync.exe',
-    r'C:\Program Files\Thorlabs\Kinesis\Thorlabs.MotionControl.Kinesis.exe',
+    #r'C:\Program Files\Thorlabs\Kinesis\Thorlabs.MotionControl.Kinesis.exe',
     
     r'C:\Program Files (x86)\Google\Chrome\Application\chrome.exe',
     
