@@ -46,9 +46,9 @@ win32gui_struct.UnpackDEV_BROADCAST = _UnpackDEV_BROADCAST
 
 class DeviceEventService(win32serviceutil.ServiceFramework):
 
-    _svc_name_ = "DevEventHandler"
-    _svc_display_name_ = "Device Event Handler"
-    _svc_description_ = "Handle device notification events"
+    _svc_name_ = "USBStorageOnConnectEventHandler"
+    _svc_display_name_ = "USB Storage Connection Event Handler"
+    _svc_description_ = "Handle USB storage device connection events"
 
     def __init__(self, args):
         win32serviceutil.ServiceFramework.__init__(self, args)
@@ -102,6 +102,7 @@ class DeviceEventService(win32serviceutil.ServiceFramework):
     def SvcStop(self):
         self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING)
         win32event.SetEvent(self.hWaitStop)
+
 
     def SvcDoRun(self):
         win32event.WaitForSingleObject(self.hWaitStop, win32event.INFINITE)
