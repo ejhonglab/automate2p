@@ -1,1 +1,7 @@
+# Note that you will need to run the pywin32_postinstall.py script this installs
+# in your Python/.../Scripts directory (as administrator), wherever Python is
+# installed.
 pywin32
+
+pytimeparse
+PyYAML

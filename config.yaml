@@ -1,0 +1,16 @@
+
+ignore_drive_letters:
+ - C
+ - D
+ - Z
+
+ignore_files_older_than: 4 weeks
+
+copy_rules:
+ - label: Extreme SSD
+   rules:
+    - from: D:\mb_team
+      to: mb_team
+    - from: C:\Users\user\src\cutpaste_arduino_stimuli
+      glob: '*_stimuli.p'
+      to: stimulus_data_files
