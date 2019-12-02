@@ -10,9 +10,14 @@ import time
 from shutil import copytree, copy2
 import traceback
 import threading
-import tkinter as tk
-from tkinter import ttk
-from tkinter import messagebox
+'''
+from multiprocessing.connection import Connection, answer_challenge, \
+    deliver_challenge
+import socket
+import struct
+'''
+from multiprocessing.connection import Client
+
 
 import win32serviceutil
 import win32service
@@ -67,6 +72,35 @@ del log_file
 # Comment before actually installing / starting the service.
 l.info = print
 l.error = print
+'''
+
+authkey = b'automate2p'
+'''
+# https://stackoverflow.com/questions/57817955
+def ClientWithTimeout(address, timeout):
+    with socket.socket(socket.AF_INET) as s:
+        s.setblocking(True)
+        s.connect(address)
+
+        # We'd like to call s.settimeout(timeout) here, but that won't work.
+
+        # Instead, prepare a C "struct timeval" to specify timeout. Note that
+        # these field sizes may differ by platform.
+        seconds = int(timeout)
+        microseconds = int((timeout - seconds) * 1e6)
+        timeval = struct.pack("@LL", seconds, microseconds)
+
+        # And then set the SO_RCVTIMEO (receive timeout) option with this.
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_RCVTIMEO, timeval)
+
+        # Now create the connection as normal.
+        c = Connection(s.detach())
+        
+    # The following code will now fail if a socket timeout occurs.
+    answer_challenge(c, authkey)
+    deliver_challenge(c, authkey)
+
+    return c
 '''
 
 
@@ -136,63 +170,53 @@ def get_drive_labels2roots(ignore_drive_letters, copy_rules):
     return drive_labels2roots
 
 
-def copy_all_by_rules(use_gui=False):
+def client_conn(address, ret_dict):
+    # is_alive check not working as i expected...
+    l.info('inside client_conn, before attempt to open client connection')
+    conn = Client(address, authkey=authkey)
+    l.info(f'conn (inside client_conn): {conn}')
+    ret_dict['conn'] = conn
+    
+    
+def client_conn_timeout(address, timeout_s):
+    # Adapted from:
+    # https://stackoverflow.com/questions/47712093
+    ret_dict = {
+        'conn': None
+    }
+    thread = threading.Thread(target=client_conn, args=(address, ret_dict),
+        daemon=True
+    )
+    l.info('starting thread to get client connection')
+    thread.start()
+    l.info('before join on client connection thread')
+    thread.join(timeout_s)
+    # From docs: "if the thread is still alive, the join() call timed out"
+    # TODO why is this not working as expected? (at least I can just check
+    # if it's None...)
+    if thread.is_alive():
+        l.info('is_alive indicated a timeout')
+    else:
+        l.info('is_alive indicated NO timeout')
+    
+    conn = ret_dict['conn']
+    l.info(f'conn: {conn}')
+    return conn
+
+
+def copy_all_by_rules():
+    use_gui = True
     l.info(f'entering copy_all_by_rules (use_gui={use_gui})')
     
     ignore_drive_letters, copy_rules, max_age_s = load_config()
     
     drive_labels2roots = \
         get_drive_labels2roots(ignore_drive_letters, copy_rules)
-        
-    # TODO TODO TODO it seems that if service is left running, one second
-    # drive connect, the drive label will still be found, but then nothing
-    # else seems to happen. fix! gui related?
-    # it does seem the issue was GUI related, because w/ use_gui=False,
-    # there does not seem to be the same problem. not sure how to fix the issue
-    # though...
             
     current_time_s = time.time()
     
-    # TODO TODO TODO how to get GUI to just show up normally? impossible w/
-    # a service? need some external non-service daemon and IPC?
-    # (when i allow service to interact w/ desktop, windows still only show up
-    # after a promprt, and then the service windows completely replace the 
-    # desktop until the windows close. not what i want at all.)
+    address = ('localhost', 48673)
     
-    if use_gui:
-        tk_root = tk.Tk()
-
-        w = tk_root.winfo_screenwidth()
-        h = tk_root.winfo_screenheight()
-        ww = w // 4
-        wh = h // 15
-        x = w // 2 - ww // 2
-        y = h // 2 - wh // 2
-        tk_root.geometry('{}x{}+{}+{}'.format(ww, wh, x, y))
-    
-        # TODO maybe try to share this str w/ windows service description above
-        tk_root.title('USB file copy utility')
-        # https://stackoverflow.com/questions/1892339
-        tk_root.attributes('-topmost', True)
-    
-        rule_var = tk.StringVar()
-        # TODO why does justify='left' seem to be ignored?
-        rule_label = ttk.Label(tk_root, textvariable=rule_var, justify='left')
-        rule_label.pack()
-    
-        itemname_var = tk.StringVar()
-        itemname_label = ttk.Label(tk_root, textvariable=itemname_var)
-        itemname_label.pack()
-        
-        # TODO say which files are being copied (would need more granularity
-        # than seems possible using copytree, in item=directory case)
-        
-        progress_var = tk.DoubleVar()
-        progress = ttk.Progressbar(tk_root, variable=progress_var, maximum=100)
-        progress.pack(expand=1, fill='both')
-        tk_root.update()
-    
-    # TODO compare copy duration to native windows GUI copy
     # TODO and maybe use multiprocessing or something to speed up copy
     # TODO check if need to change service settings to get gui to display
     # from a windows service
@@ -205,7 +229,44 @@ def copy_all_by_rules(use_gui=False):
         l.info(f'rules: {rules}')
         
         root = drive_labels2roots[label]
+        
+        # TODO TODO just check whether service is available at that address rather
+        # than having some hardcoded flag... how?
+        # + at least ensure correct timeout settings, so can still work w/o gui
+        if use_gui:
+            l.info(f'trying to open connection with GUI process at {address}')
+            
+            # TODO make sure this doesn't block if nothing is listening
+            # on this address. want to just proceed w/o gui in that case.
+            # (this does block, and the API doesn't seem to accept a something 
+            # like a timeout...)
+            # workaround? https://stackoverflow.com/questions/47712093 ?
+            #conn = Client(address)
+            # TODO fixable? doesn't seem to be working...
+            # (log still only has line above as last line)
+            #conn = ClientWithTimeout(address, 3)
+            
+            conn = client_conn_timeout(address, 3.0)
+            if conn is None:
+                l.error('could not open client connection within timeout. '
+                    'disabling interaction with GUI for this drive connection.'
+                )
+                # TODO or just return (logging fact that we are)?
+                use_gui = False
+            else:
+                # TODO may need to check it's not None or something
+                l.info('opened connection with GUI process')
+                
+                # So that this drive can be ejected at the end, if everything is
+                # successfull.
+                conn.send({
+                    'drive_letter': root,
+                    'drive_label': label
+                })
+            
         for rn, rule in enumerate(rules):
+            rule_start_time = time.time()
+            
             src = rule['from']
             dst = rule['to']
             l.info(f'starting on rule {rn} ({src} -> {dst})')
@@ -263,24 +324,25 @@ def copy_all_by_rules(use_gui=False):
             if use_gui:
                 # or just '{src} -> {dst}'?
                 rule_text = f'Copying files from {src} to {dst}'
-                rule_var.set(rule_text)
-                progress_var.set(0.0)
-                rule_label.update()
-                progress.update()
-                tk_root.update()
                 
                 # Not counting the fact that the items may take different
                 # amounts of time to copy.
                 progress_step = 100 / len(glob_items)
+                
+                conn.send({
+                    'rule_text': rule_text,
+                    'progress_step': progress_step
+                })
                 
             for src_item in glob_items:
                 dst_item = join(dst, split(src_item)[1])
                 l.info(f'{src_item} -> {dst_item}')
 
                 if use_gui:
-                    itemname_var.set(split(src_item)[1])
-                    itemname_label.update()
-
+                    itemname = split(src_item)[1]
+                    conn.send({'itemname': itemname})
+                    
+                before_copy = time.time()
                 try:
                     assert not exists(dst_item), \
                         f'{dst_item} existed before copy'
@@ -291,6 +353,8 @@ def copy_all_by_rules(use_gui=False):
                         # Assuming it was a file here.
                         copy2(src_item, dst_item)
                         
+                    copy_duration_s = time.time() - before_copy
+                    l.info(f'copying {src_item} took {copy_duration_s:.2f}s')
                     assert exists(dst_item), \
                         f'{dst_item} did not exist after copy'
                         
@@ -298,27 +362,22 @@ def copy_all_by_rules(use_gui=False):
                 # that indicates insufficient space?), and handle (by pausing?)
                 # in that case, otherwise raise?
                 except Exception as e:
+                    formatted_traceback = traceback.format_exc()
                     if use_gui:
-                        # TODO test this (shows up / looks reasonable / doesnt
-                        # block other things / closes appropriately / etc)
-                        # see this for way to maybe make this message more
-                        # friendly to the avg user:
-                        # https://stackoverflow.com/questions/49072942
-                        messagebox.showerror(
-                            # TODO maybe get title prefix from service desc
-                            title='USB Copy Utility Error',
-                            message=f'Error while copying {src_item}: {e}.',
-                            detail=traceback.format_exc()
-                        )
-                        tk_root.update()
-                    
-                        # TODO want to quit original progressbar window here?
-                        # wait for messagebox to be closed, then do that?
-                        # (may not be able to just raise then...)
+                        conn.send({
+                            'err_str': str(e),
+                            'err_src_item': src_item,
+                            'formatted_traceback': formatted_traceback
+                        })
+                        # TODO should i also wait for reply from gui process
+                        # before raising the error, to ensure this message
+                        # and any preceding are handled?
+                        # (or does not needed to here mean i don't need to
+                        # below?)
                         
                     # TODO delete if err logging is otherwise working
                     l.error(f'error while copying {src_item}: {e}\n' +
-                        traceback.format_ext()
+                        formatted_traceback
                     )
                     #
                     
@@ -332,25 +391,24 @@ def copy_all_by_rules(use_gui=False):
                 
                 if use_gui:
                     # TODO delete. for testing progressbar.
-                    time.sleep(0.5)
+                    time.sleep(0.3)
                     #
-                        
-                    progress.step(progress_step)
-                    progress.update()
-                    
-                    tk_root.update()
+                    conn.send('step_progress')
             
-            l.info(f'done processing rule {rn}')
+            # TODO compare copy duration to native windows GUI copy
+            ruledur_s = time.time() - rule_start_time
+            l.info(f'done processing rule {rn} (took {ruledur_s:.2f}s)')
     
     if use_gui:
-        # TODO how to make the window close? are my problems unique to
-        # interactively testing the code in anaconda for some reason?
-        # maybe it will just work when using this as a service (assuming
-        # I can get windows to show up at all...)?
-        # (they do seem to be, but check as a windows service)
-        tk_root.quit()
-        tk_root.update()
-        del tk_root
+        l.info('sending close_request to GUI process')
+        conn.send('close_request')
+        msg = conn.recv()
+        l.info(f'got reply to close request: {msg}')
+        assert msg == 'close_ok'
+        
+        l.info('closing connection with GUI process')
+        conn.close()
+        l.info('closed connection with GUI process')
     
     # TODO auto eject w/ message if copy completes successfully
     # (or at least prompt that will do so as one option)
@@ -468,7 +526,7 @@ class DeviceEventService(win32serviceutil.ServiceFramework):
                 # happen in another thread after a certain delay?
                 
                 # From experimenting, it seems daemon worker thread is killed
-                # (worker.isAlive() returns False) after target function
+                # (worker.is_alive() returns False) after target function
                 # returns.
                 worker = threading.Thread(target=copy_after_delay, daemon=True)
                 l.info('starting worker thread to process rules')
@@ -503,11 +561,12 @@ class DeviceEventService(win32serviceutil.ServiceFramework):
 
 
 if __name__=='__main__':
-    #copy_all_by_rules()
-    #'''
-    # TODO way to detect (successful) install, to automatically run postinstall
-    # stuff, so service actually works (rather than 1053 error)?
-    # post-install stuff suggested here:
-    # https://stackoverflow.com/questions/13466053
+    # TODO automatically install (wrap w/ GUI installer?)
+    # TODO + automatically set GUI use options if i want that
+    # (it seems passing --interactive to install should handle this, but
+    # doing this in powershell just yields a usage error... not sure how to
+    # modify syntax, if possible. if fixable, should also allow changing user.)
+    # TODO + change user it's installed under (?) to maybe have GUI behave
+    # better?
+    # TODO make service start on boot (+ restart on err if necessary)
     win32serviceutil.HandleCommandLine(DeviceEventService)
-    #'''
