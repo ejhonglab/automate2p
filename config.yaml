@@ -6,6 +6,9 @@ ignore_drive_letters:
 
 ignore_files_older_than: 4 weeks
 
+# As-is, all paths under 'to' are assumed to be under the root
+# of the drive matching this label. Copying from these drives is
+# not currently supported.
 copy_rules:
  - label: Extreme SSD
    rules:
