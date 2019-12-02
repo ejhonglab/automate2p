@@ -20,9 +20,9 @@ import win32gui_struct
 struct = win32gui_struct.struct
 pywintypes = win32gui_struct.pywintypes
 import win32con
+import win32api
 import yaml
 import pytimeparse
-import win32api
 
 GUID_DEVINTERFACE_USB_DEVICE = "{A5DCBF10-6530-11D2-901F-00C04FB951ED}"
 DBT_DEVICEARRIVAL = 0x8000
@@ -82,9 +82,7 @@ def load_config():
     return ignore_drive_letters, copy_rules, max_age_s
 
 
-def copy_all_by_rules():
-    ignore_drive_letters, copy_rules, max_age_s = load_config()
-    
+def get_drive_labels2roots(ignore_drive_letters):
     all_drives = [d for d in win32api.GetLogicalDriveStrings().split('\x00')
         if d
     ]
@@ -123,37 +121,53 @@ def copy_all_by_rules():
         if label in copy_rules:
             drive_labels2roots[label] = d
             l.info(f'found label "{label}" (in config) mounted at {d}')
+
+    return drive_labels2roots
+
+
+def copy_all_by_rules():
+    ignore_drive_letters, copy_rules, max_age_s = load_config()
+    
+    drive_labels2roots = get_drive_labels2roots(ignore_drive_letters)
             
     current_time_s = time.time()
     
-    # Trying to adapt progress bar stuff from here:
-    # https://stackoverflow.com/questions/17777050
-    
-    # TODO ok to have this not at top level scope? if so, how am i supposed
-    # to do this?
     tk_root = tk.Tk()
+
+    w = tk_root.winfo_screenwidth()
+    h = tk_root.winfo_screenheight()
+    ww = w // 4
+    wh = h // 15
+    x = w // 2 - ww // 2
+    y = h // 2 - wh // 2
+    tk_root.geometry('{}x{}+{}+{}'.format(ww, wh, x, y))
+
+    # TODO mabybe try to share this str w/ windows service description above
+    tk_root.title('USB file copy utility')
     # https://stackoverflow.com/questions/1892339
     tk_root.attributes('-topmost', True)
+
+    rule_var = tk.StringVar()
+    # TODO why does justify='left' seem to be ignored?
+    rule_label = ttk.Label(tk_root, textvariable=rule_var, justify='left')
+    rule_label.pack()
+
+    itemname_var = tk.StringVar()
+    itemname_label = ttk.Label(tk_root, textvariable=itemname_var)
+    itemname_label.pack()
     
-    # TODO add a label for the window
-    # TODO say which drive is being copied to
-    # TODO say which files are being copied
+    # TODO say which files are being copied (would need more granularity than
+    # seems possible using copytree, in item=directory case)
     
-    # TODO maybe re-init this for each rule? (or probably just zero it somehow?)
-    # https://stackoverflow.com/questions/41896879
     progress_var = tk.DoubleVar()
     progress = ttk.Progressbar(tk_root, variable=progress_var, maximum=100)
-    progress.pack()
+    progress.pack(expand=1, fill='both')
     tk_root.update()
-    # TODO TODO TODO some way to mix gui into this code, or absolutely NEED
-    # to have a callback that the GUI calls (w/ this after thing)?
-    # see https://gordonlesti.com/use-tkinter-without-mainloop/ ?
-    #progress.after(1, main_callback)
     
-    # TODO compare copy time to native windows GUI copy
+    # TODO compare copy duration to native windows GUI copy
     # TODO and maybe use multiprocessing or something to speed up copy
-    # TODO TODO ideally, have some GUI progressbar popup when copy is started
-    # (may need to change service settings?)
+    # TODO check if need to change service settings to get gui to display
+    # from a windows service
     for label, rules in copy_rules.items():
         if label not in drive_labels2roots:
             continue
@@ -161,7 +175,7 @@ def copy_all_by_rules():
         root = drive_labels2roots[label]
         for rule in rules:
             src = rule['from']
-            # TODO if i get gui progress working, maybe also show these errors
+            # TODO maybe also show these errors in the gui
             if not isdir(src):
                 l.error(f'rule source {src} was not an existing directory')
                 continue
@@ -188,36 +202,44 @@ def copy_all_by_rules():
             # not already exist at the destination.
             
             glob_items = glob.glob(join(src, globstr))
-            
-            progress_var.set(0.0)
-            progress.update()
-            tk_root.update()
-            
-            # TODO TODO this work when using progress_var? need to use set,
-            # incrementing progress_var manually now? 
-            # Not counting the fact that the items may take different amounts
-            # of time to copy.
-            progress_step = 100 / len(glob_items)
-                
+
+            # Filtering these out first so progress bar is more meaningful.
+            filtered_glob_items = []
             for src_item in glob_items:
                 src_item_age_s = current_time_s - getmtime(src_item)
-                if src_item_age_s > max_age_s:
-                    # TODO TODO filter these out in an earlier step so
-                    # progress bar is more meaningful
+                if max_age_s > 0 and src_item_age_s > max_age_s:
                     l.info(f'skipping {src_item} because it was too old '
                         f'({src_item_age_s:.0f} > {max_age_s:.0f} seconds)'
                     )
-                    progress.step(progress_step)
-                    progress.update()
                     continue
 
                 #  TODO compare mtimes here to decide whether to copy?
                 dst_item = join(dst, split(src_item)[1])
                 if not exists(dst_item):
-                    l.info(f'{src_item} -> {dst_item}')
-                    # TODO TODO TODO handle case where one of these calls
-                    # would / does exceed the remaining space on the drive!!!!
-                    # (does the service stop if there is an error?)
+                    filtered_glob_items.append(src_item)
+                else:
+                    l.info(f'{dst_item} already existed at destination')
+            glob_items = filtered_glob_items
+            
+            # or just '{src} -> {dst}'?
+            rule_text = f'Copying files from {src} to {dst}'
+            rule_var.set(rule_text)
+            progress_var.set(0.0)
+            rule_label.update()
+            progress.update()
+            tk_root.update()
+            
+            # Not counting the fact that the items may take different amounts
+            # of time to copy.
+            progress_step = 100 / len(glob_items)
+                
+            for src_item in glob_items:
+                l.info(f'{src_item} -> {dst_item}')
+
+                itemname_var.set(split(src_item)[-1])
+                itemname_label.update()
+
+                try:
                     if isdir(src_item):
                         #copytree(src_item, dst_item)
                         pass
@@ -225,8 +247,14 @@ def copy_all_by_rules():
                         # Assuming it was a file here.
                         #copy2(src_item, dst_item)
                         pass
-                else:
-                    l.info(f'{dst_item} already existed at destination')
+                # TODO exception or error?
+                except Exception as e:
+                    # TODO TODO TODO GUI display + log traceback appropriately
+                    # (just leave logging to unhandled exception logging?
+                    # that working?)
+                    # (does the service stop if there is an error?)
+
+                    raise
                     
                 # TODO delete. for testing progressbar.
                 time.sleep(0.5)
@@ -241,6 +269,7 @@ def copy_all_by_rules():
     # interactively testing the code in anaconda for some reason?
     # maybe it will just work when using this as a service (assuming
     # I can get windows to show up at all...)?
+    # (they do seem to be, but check as a windows service)
     tk_root.quit()
     tk_root.update()
     del tk_root
