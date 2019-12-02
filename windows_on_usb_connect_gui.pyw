@@ -73,9 +73,11 @@ def init_gui():
 
 progress_step = None
 all_copies_successfull = False
+something_was_copied = False
 def gui_handle_msg(conn, gui_elements, msg):
     global progress_step
     global all_copies_successfull
+    global something_was_copied
     
     tk_root = gui_elements['tk_root']
     rule_var = gui_elements['rule_var']
@@ -106,6 +108,7 @@ def gui_handle_msg(conn, gui_elements, msg):
             itemname = msg['itemname']
             itemname_var.set(itemname)
             itemname_label.update()
+            something_was_copied = True
             # tk_root update? just do once at end, regardless?
             
         elif key_set == err_keys:
@@ -212,6 +215,7 @@ def eject_drive(drive_letter):
 def main():
     global progress_step
     global all_copies_successfull
+    global something_was_copied
     
     print('main')
     # TODO maybe move address / port to config file so both can read it
@@ -237,6 +241,7 @@ def main():
                 gui_elements = init_gui()
                 
                 all_copies_successfull = False
+                something_was_copied = False
                 
                 # TODO TODO better way? test that this gets exited when 
                 # service closes its side of the connection!
@@ -257,30 +262,33 @@ def main():
             del gui_elements
             progress_step = None
             
-            if all_copies_successfull:
-                print('all copies were successfull')
-                tk_root = tk.Tk()
-                tk_root.withdraw()
-                
-                messagebox.showinfo('USB Copy Done',
-                    'All files copied successfully.\nPlease eject the drive '
-                    f'{drive_letter[:-1]} ({drive_label})'
-                )
-                # since i haven't yet been able to figure out how to
-                # programmatically eject the drive...
-                '''
-                msgbox = messagebox.askquestion('Eject',
-                    'All files copied successfully.\nEject '
-                    f'{drive_letter[0]} ({drive_label})?'
-                )
-                if msgbox == 'yes':
-                    # TODO TODO TODO eject the drive
-                    print('trying to eject the drive')
-                '''
+            if something_was_copied:
+                if all_copies_successfull:
+                    print('all copies were successfull')
+                    tk_root = tk.Tk()
+                    tk_root.withdraw()
                     
-                tk_root.destroy()   
+                    messagebox.showinfo('USB Copy Done',
+                        'All files copied successfully.\nPlease eject the '
+                        f'drive {drive_letter[0]} ({drive_label})'
+                    )
+                    # since i haven't yet been able to figure out how to
+                    # programmatically eject the drive...
+                    '''
+                    msgbox = messagebox.askquestion('Eject',
+                        'All files copied successfully.\nEject '
+                        f'{drive_letter[0]} ({drive_label})?'
+                    )
+                    if msgbox == 'yes':
+                        # TODO TODO TODO eject the drive
+                        print('trying to eject the drive')
+                    '''
+                        
+                    tk_root.destroy()   
+                else:
+                    print('all copies were NOT successfull')
             else:
-                print('all copies were NOT successfull')
+                print('nothing was copied')
                 
             # TODO delete. just for debugging, since i can't seem to ctrl-c
             # this terminal app on windows...
@@ -294,9 +302,9 @@ def main():
 def install():
     print('installing service GUI')
     assert exists(startup_dir)
+    print(f'writing .bat file to {startup_bat_path}')
     # https://stackoverflow.com/questions/4438020
     with open(startup_bat_path, 'w') as f:
-        # TODO need diff escaping in path put in bat file?
         f.write(r'start "" ' + py_script_path)
 
     

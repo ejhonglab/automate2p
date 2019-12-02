@@ -391,7 +391,7 @@ def copy_all_by_rules():
                 
                 if use_gui:
                     # TODO delete. for testing progressbar.
-                    time.sleep(0.3)
+                    #time.sleep(0.3)
                     #
                     conn.send('step_progress')
             
