@@ -9,10 +9,9 @@ import getpass
 import os
 from os.path import split, join, splitext, abspath, normpath, exists
 from multiprocessing.connection import Listener
-import tkinter as tk
-from tkinter import ttk
-from tkinter import messagebox
 from subprocess import Popen
+
+import util
 
 
 user = getpass.getuser()
@@ -25,127 +24,50 @@ startup_bat_path = join(startup_dir,
 )
 
 
-def init_gui():
-    tk_root = tk.Tk()
-
-    w = tk_root.winfo_screenwidth()
-    h = tk_root.winfo_screenheight()
-    ww = w // 4
-    wh = h // 15
-    x = w // 2 - ww // 2
-    y = h // 2 - wh // 2
-    tk_root.geometry('{}x{}+{}+{}'.format(ww, wh, x, y))
-
-    # TODO maybe try to share this str w/ windows service description 
-    # defined in windows_on_usb_connect (get over IPC? or shared config?)
-    tk_root.title('USB file copy utility')
-    # https://stackoverflow.com/questions/1892339
-    tk_root.attributes('-topmost', True)
-
-    rule_var = tk.StringVar()
-    # TODO why does justify='left' seem to be ignored?
-    rule_label = ttk.Label(tk_root, textvariable=rule_var, justify='left')
-    rule_label.pack()
-
-    itemname_var = tk.StringVar()
-    itemname_label = ttk.Label(tk_root, textvariable=itemname_var)
-    itemname_label.pack()
-    
-    # TODO say which files are being copied (would need more granularity
-    # than seems possible using copytree, in item=directory case)
-    
-    progress_var = tk.DoubleVar()
-    progress = ttk.Progressbar(tk_root, variable=progress_var, maximum=100)
-    progress.pack(expand=1, fill='both')
-    tk_root.update()
-    
-    gui_elements = {
-        'tk_root': tk_root,
-        'rule_var': rule_var,
-        'rule_label': rule_label,
-        'itemname_var': itemname_var,
-        'itemname_label': itemname_label,
-        'progress_var': progress_var,
-        'progress': progress
-    }
-    return gui_elements
-   
-
-progress_step = None
-all_copies_successfull = False
-something_was_copied = False
-def gui_handle_msg(conn, gui_elements, msg):
-    global progress_step
-    global all_copies_successfull
-    global something_was_copied
-    
-    tk_root = gui_elements['tk_root']
-    rule_var = gui_elements['rule_var']
-    rule_label = gui_elements['rule_label']
-    itemname_var = gui_elements['itemname_var']
-    itemname_label = gui_elements['itemname_label']
-    progress_var = gui_elements['progress_var']
-    progress = gui_elements['progress']
-    
+def gui_handle_msg(conn, gui, msg):
     if type(msg) is dict:
         key_set = set(msg.keys())
-        update_rule_keys = {'rule_text', 'progress_step'}
+        update_rule_keys = {'rule_text', 'n_rule_items'}
         update_item_keys = {'itemname'}
         err_keys = {'err_str', 'err_src_item', 'formatted_traceback'}
         
         if key_set == update_rule_keys:
-            print('updating rule')
+            if verbose:
+                print('updating rule')
+
             rule_text = msg['rule_text']
-            progress_step = msg['progress_step']
-            rule_var.set(rule_text)
-            progress_var.set(0.0)
-            rule_label.update()
-            progress.update()
-            tk_root.update()
+            n_rule_items = msg['n_rule_items']
+            gui.set_rule(rule_text, n_rule_items)
             
         elif key_set == update_item_keys:
-            print('updating item')
+            if verbose:
+                print('updating item')
+
             itemname = msg['itemname']
-            itemname_var.set(itemname)
-            itemname_label.update()
-            something_was_copied = True
-            # tk_root update? just do once at end, regardless?
+            gui.set_item(itemname)
             
         elif key_set == err_keys:
-            print('received error information')
+            if verbose:
+                print('received error information')
+
             src_item = msg['err_src_item']
             estr = msg['err_str']
             formatted_traceback = msg['formatted_traceback']
-            # TODO test this (shows up / looks reasonable / doesnt
-            # block other things / closes appropriately / etc)
-            # see this for way to maybe make this message more
-            # friendly to the avg user:
-            # https://stackoverflow.com/questions/49072942
-            messagebox.showerror(
-                # TODO maybe get title prefix from service desc
-                title='USB Copy Utility Error',
-                message=f'Error while copying {src_item}: {estr}.',
-                detail=formatted_traceback
-            )
-            tk_root.update()
-            # TODO want to quit original progressbar window here?
-            # wait for messagebox to be closed, then do that?
-            # (may not be able to just raise then...)
-            
+            gui.show_error(src_item, estr, formatted_traceback)
+
         else:
             raise ValueError(f'dict w/ unrecognized keys: {msg}')
             
     elif msg == 'step_progress':
-        print('stepping progress bar')
-        assert progress_step is not None
-        progress.step(progress_step)
-        progress.update()
-        tk_root.update()
+        if verbose:
+            print('stepping progress bar')
+
+        gui.step_progress()
         
     elif msg == 'close_request':
         # may not be necessary...
         conn.send('close_ok')
-        all_copies_successfull = True
+        gui.all_copies_successful = True
         
     else:
         raise ValueError(f'unrecognized msg: {msg}')
@@ -213,11 +135,6 @@ def eject_drive(drive_letter):
     
     
 def main():
-    global progress_step
-    global all_copies_successfull
-    global something_was_copied
-    
-    print('main')
     # TODO maybe move address / port to config file so both can read it
     # (.py even...)
     address = ('localhost', 48673)
@@ -238,10 +155,9 @@ def main():
                 drive_letter = drive_data['drive_letter']
                 drive_label = drive_data['drive_label']
                 
-                gui_elements = init_gui()
-                
-                all_copies_successfull = False
-                something_was_copied = False
+                gui = util.ProgressGUI()
+                gui.set_drive_label(drive_label)
+                gui.set_drive_letter(drive_letter)
                 
                 # TODO TODO better way? test that this gets exited when 
                 # service closes its side of the connection!
@@ -249,46 +165,17 @@ def main():
                     try:
                         msg = conn.recv()
                         print(f'msg: {msg}')
-                        gui_handle_msg(conn, gui_elements, msg)
+                        gui_handle_msg(conn, gui, msg)
                         
                     # This indicates the connection was closed.
                     except EOFError:
                         break
         
-            tk_root = gui_elements['tk_root']
-            # TODO does this close error? and do i want it to?
-            tk_root.destroy()
-            del tk_root
-            del gui_elements
-            progress_step = None
-            
-            if something_was_copied:
-                if all_copies_successfull:
-                    print('all copies were successfull')
-                    tk_root = tk.Tk()
-                    tk_root.withdraw()
-                    
-                    messagebox.showinfo('USB Copy Done',
-                        'All files copied successfully.\nPlease eject the '
-                        f'drive {drive_letter[0]} ({drive_label})'
-                    )
-                    # since i haven't yet been able to figure out how to
-                    # programmatically eject the drive...
-                    '''
-                    msgbox = messagebox.askquestion('Eject',
-                        'All files copied successfully.\nEject '
-                        f'{drive_letter[0]} ({drive_label})?'
-                    )
-                    if msgbox == 'yes':
-                        # TODO TODO TODO eject the drive
-                        print('trying to eject the drive')
-                    '''
-                        
-                    tk_root.destroy()   
-                else:
-                    print('all copies were NOT successfull')
-            else:
-                print('nothing was copied')
+            gui.final_notifications()
+            del gui
+
+            # TODO also gui.destroy()? factor into final_notifications?
+            # (may come down to when i want popup to close?)
                 
             # TODO delete. just for debugging, since i can't seem to ctrl-c
             # this terminal app on windows...

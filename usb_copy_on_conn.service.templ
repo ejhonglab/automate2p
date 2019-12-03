@@ -4,14 +4,22 @@
 
 [Unit]
 Description=USB Copy On Connect Utility
+Requires=graphical.target
 Requires={drive_systemctl_unit}
 After={drive_systemctl_unit}
 
 [Service]
+User={nonroot_user}
+Group={nonroot_user}
+# Next two lines are so that tkinter will work.
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=/home/{nonroot_user}/.Xauthority
 # So that I can use the non-drive-specific linux_on_usb_connect.py can lookup
 # drive-specific configuration files.
 # https://serverfault.com/questions/926349
 Environment=DRIVE_SYSTEMCTL_UNIT={drive_systemctl_unit}
+# TODO see note in setup_linux_service.py
+#Environment=DRIVE_MOUNT_POINT="{mount_point}"
 ExecStart={abspath_python} {abspath_script_to_trigger}
 
 [Install]

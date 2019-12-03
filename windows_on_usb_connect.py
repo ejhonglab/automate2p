@@ -300,13 +300,11 @@ def copy_all_by_rules():
                 # or just '{src} -> {dst}'?
                 rule_text = f'Copying files from {src} to {dst}'
                 
-                # Not counting the fact that the items may take different
-                # amounts of time to copy.
-                progress_step = 100 / len(glob_items)
-                
                 conn.send({
                     'rule_text': rule_text,
-                    'progress_step': progress_step
+                    # GUI does not count the fact that the items may take
+                    # different amounts of time to copy.
+                    'n_rule_items': len(glob_items)
                 })
                 
             for src_item in glob_items:
@@ -349,19 +347,6 @@ def copy_all_by_rules():
                         # and any preceding are handled?
                         # (or does not needed to here mean i don't need to
                         # below?)
-                        
-                    # TODO delete if err logging is otherwise working
-                    l.error(f'error while copying {src_item}: {e}\n' +
-                        formatted_traceback
-                    )
-                    #
-                    
-                    # TODO log traceback appropriately
-                    # (just leave logging to unhandled exception logging?
-                    # that working?)
-                    # TODO first just test what logging of error looks like w/o
-                    # explicit handling
-                    # (does the service stop if there is an error?)
                     raise
                 
                 if use_gui:

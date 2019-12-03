@@ -14,5 +14,6 @@ fi
 NONROOT_PYTHON=`which python3`
 # re: the last expression I'm using to expand all arguments,
 # https://stackoverflow.com/questions/3811345
-sudo ${NONROOT_PYTHON} setup_linux_service.py --python ${NONROOT_PYTHON} "$@"
+sudo ${NONROOT_PYTHON} setup_linux_service.py --user ${USER} \
+  --python ${NONROOT_PYTHON} "$@"
 
