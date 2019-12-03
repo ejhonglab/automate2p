@@ -1,0 +1,10 @@
+
+# Any non-absolute paths (not starting with /), as assumed to be located under
+# the drives mount point.
+
+copy_rules:
+ - from: mb_team
+   to: /mnt/nas/mb_team/raw_data
+ - from: stimulus_data_files
+   to: /mnt/nas/mb_team/stimulus_data_files
+

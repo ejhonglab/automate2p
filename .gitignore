@@ -1,3 +1,5 @@
 __pycache__/
 *.log
 *.png
+# This will ignore any generated Linux configs, but not the Windows one.
+*_config.yaml

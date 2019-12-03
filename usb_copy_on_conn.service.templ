@@ -1,0 +1,19 @@
+
+# Generated and installed by setup_linux_service.sh, from:
+# https://github.com/ejhonglab/automate2p
+
+[Unit]
+Description=USB Copy On Connect Utility
+Requires={drive_systemctl_unit}
+After={drive_systemctl_unit}
+
+[Service]
+# So that I can use the non-drive-specific linux_on_usb_connect.py can lookup
+# drive-specific configuration files.
+# https://serverfault.com/questions/926349
+Environment=DRIVE_SYSTEMCTL_UNIT={drive_systemctl_unit}
+ExecStart={abspath_python} {abspath_script_to_trigger}
+
+[Install]
+WantedBy={escaped_drive_systemctl_unit}
+

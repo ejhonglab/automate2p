@@ -18,7 +18,6 @@ import struct
 '''
 from multiprocessing.connection import Client
 
-
 import win32serviceutil
 import win32service
 import win32event
@@ -32,39 +31,15 @@ import win32api
 import yaml
 import pytimeparse
 
+import util
+
 GUID_DEVINTERFACE_USB_DEVICE = "{A5DCBF10-6530-11D2-901F-00C04FB951ED}"
 DBT_DEVICEARRIVAL = 0x8000
 DBT_DEVICEREMOVECOMPLETE = 0x8004
 
-# https://stackoverflow.com/questions/51194784
-log_file = os.path.splitext(__file__)[0] + ".log"
-l = logging.getLogger()
-l.setLevel(logging.INFO)
-f = logging.Formatter(
-    '%(asctime)s %(process)d:%(thread)d %(name)s %(levelname)-8s %(message)s'
-)
-# TODO why this handler in addition to rotating file thing below?
-h = logging.StreamHandler(sys.stdout)
-h.setLevel(logging.NOTSET)
-h.setFormatter(f)
-l.addHandler(h)
-h = logging.handlers.RotatingFileHandler(log_file, maxBytes=1024**2,
-    backupCount=1
-)
-h.setLevel(logging.NOTSET)
-h.setFormatter(f)
-l.addHandler(h)
-del h, f
-# Hook to log unhandled exceptions
-def excepthook(type,value,traceback):
-    logging.error("Unhandled exception occured",exc_info=(type,value,traceback))
-    #Don't need another copy of traceback on stderr
-    if old_excepthook!=sys.__excepthook__:
-        old_excepthook(type,value,traceback)
-old_excepthook = sys.excepthook
-sys.excepthook = excepthook
-del log_file
-
+# TODO TODO test that this refactoring has not broken the logging
+l = util.init_logging(__file__)
+#
 
 '''
 # Uncomment for interactive debugging of logged functions that do not involve
