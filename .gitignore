@@ -4,4 +4,5 @@ __pycache__/
 # This will ignore any generated Linux configs, but not the Windows one.
 *_config.yaml
 *.bak
-.*.p
+*.p
+*.log.*

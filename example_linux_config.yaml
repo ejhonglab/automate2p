@@ -8,3 +8,20 @@ copy_rules:
  - from: mb_team
    to: /mnt/nas/mb_team/raw_data
 
+run_if_anything_copied:
+ # TODO figure out how to break long lines in YAML. worst case scenario,
+ # use a YAML list like line breaks here
+ # This was a test command:
+ #- cmd: echo PID=$$; env | grep XDG_; echo test1; sleep 2; echo test2; sleep 1; echo test3
+ - cmd: conda activate caiman; ./populate_db.py
+   working_directory: '~/src/python_2p_analysis'
+   # TODO maybe figure out default error/output display/logging s.t. not
+   # really advantageous to run stuff in a literal new terminal?
+   # TODO maybe some way to detect whether a terminal (for this purpose) is
+   # already open, and somehow run the cmd in that terminal if it is?
+   # seems tricky...
+   in_new_terminal: True
+   # could try to fix this. wasn't being set properly, for what seem like env
+   # reasons (would need to fix in linux_on_usb_connect.py).
+   #terminal_geometry: 101x58+65--10
+

@@ -16,7 +16,6 @@ import traceback
 from shutil import copyfile
 import re
 import pickle
-from datetime import datetime
 
 import util
 
@@ -200,13 +199,26 @@ def add_fstab_lines(uuid, mount_point, filesystem):
     # TODO make prompt robust
     choice = input('Add the above line to fstab? [y/n] ').lower()
     if choice == 'y':
+        fstab_lines = fstab_contents.splitlines()
+        n_old_fstab_lines = len(fstab_lines)
+
         with open('/etc/fstab', 'a') as f:
             # 3 lines. Same number removed below (hardcoded).
-            f.write('\n' + fstab_gen_indicator_line + '\n' + fstab_line + '\n')
+            # Not clear on why two newlines are required at beginning to make a 
+            # total of three lines...
+            f.write('\n\n' + fstab_gen_indicator_line + '\n' + fstab_line +
+                '\n'
+            )
+
+        with open('/etc/fstab', 'r') as f:
+            new_content = f.read()
+        new_lines = new_content.splitlines()
+        assert len(new_lines) == n_old_fstab_lines + 3, \
+            f'only {len(new_lines) - n_old_fstab_lines} new lines'
 
         # TODO need to catch if it was already unmounted?
         print('unmounting drive')
-        # TODO TODO need to worry about / change args to avoid / deal w/
+        # TODO need to worry about / change args to avoid / deal w/
         # "WARN: volume was not unmounted cleanly" output?
         # (though it doesn't seem to show up here... maybe when service is
         # started?)
@@ -235,21 +247,6 @@ def remove_fstab_lines(uuid):
     lines_after = fstab_lines[(line_num + 1):]
     new_lines = lines_before + lines_after
     new_contents = '\n'.join(new_lines)
-
-    # TODO TODO TODO fix whatever error was causing fstab to shrink!!!
-    # (it seems sometimes/all-the-time only 2 lines are added... why?)
-
-    # going to keep this for now, so i can restore fstab more easily
-    print('\nOld fstab contents:')
-    print(fstab_contents)
-    print('\nNew fstab contents:')
-    print(new_contents)
-    print('')
-
-    fstab_backup = datetime.now().strftime('%Y-%d-%m_%H%M%S_fstab.bak')
-    with open(fstab_backup, 'w') as f:
-        print(f'saving fstab backup at {fstab_backup}')
-        f.write(fstab_contents)
 
     assert (
         len(new_contents.splitlines()) == (len(fstab_contents.splitlines()) - 3)
@@ -295,7 +292,6 @@ def install(python_path=None):
         copyfile(example_config, service_config_file)
         Popen(['chown', f'{args.user}:{args.user}', service_config_file])
 
-
     # TODO delete mount point stuff if i can't figure out escaping / 
     # unless there's some other case where it's not derivable directly
     # from service unit
@@ -340,14 +336,16 @@ def install(python_path=None):
         f.write(service)
 
     systemctl_call('enable')
-    try:
-        systemctl_call('start')
 
-    # This will happen if, for instance, the drive is not connected.
-    except CalledProcessError as e:
-        warnings.warn('could not start the just-installed service. '
-            'is the drive connected?'
-        )
+    if args.test_start:
+        try:
+            systemctl_call('start')
+
+        # This will happen if, for instance, the drive is not connected.
+        except CalledProcessError as e:
+            warnings.warn('could not start the just-installed service. '
+                'is the drive connected?'
+            )
     
 
 def remove():
@@ -420,6 +418,11 @@ if __name__ == '__main__':
     group.add_argument('--remove', action='store_true')
     group.add_argument('--remove-last-installed', action='store_true')
 
+    parser.add_argument('--test-start', action='store_true',
+        help='Starts the service without waiting for drive to be connected. '
+        'Will fail if drive is unmounted during the attempt.'
+    )
+
     # TODO implement negation of this (or delete if fstab setup working really
     # well) any reason we wouldn't want to just throw the drive into fstab?
     '''
@@ -428,7 +431,6 @@ if __name__ == '__main__':
         'with mount_point will raise an error.'
     )
     '''
-
     parser.add_argument('--strip-trailing-nums', action='store_true',
         help='Does not include trailing number on mount point in fstab line. '
         'This is a hack to get mount point before multiple copies of it are '
