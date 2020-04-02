@@ -17,12 +17,9 @@ for d in glob.glob(join(todays_dir, '*/')):
     except ValueError:
         continue
     
-    if max_fly_num is None:
+    if max_fly_num is None or max_fly_num < fly_num:
         max_fly_num = fly_num
-    else:
-        if max_fly_num < fly_num:
-            max_fly_num = fly_num
-            last_dir = d
+        last_dir = d
 
 assert max_fly_num is not None, 'must have some existing fly dirs to call this'
 
@@ -31,7 +28,7 @@ last_empty = len(os.listdir(last_dir)) == 0
 if not use_last_if_empty or not last_empty:
     next_fly_dir = join(todays_dir, str(max_fly_num + 1))
     if not exists(next_fly_dir):
-        #os.makedirs(next_fly_dir)
+        os.makedirs(next_fly_dir)
         print('Making directory {}'.format(next_fly_dir))
 else:
     print('Using empty fly directory {}'.format(normpath(last_dir)))
