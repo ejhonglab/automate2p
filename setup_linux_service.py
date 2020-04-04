@@ -456,6 +456,9 @@ if __name__ == '__main__':
     )
     args = parser.parse_args()
 
+    # TODO TODO store all installed rather than just last, and add commands to
+    # disable all [+ enable]/ remove all
+
     last_installed_pickle = '.last_installed_service.p'
 
     # These are global variables used in the functions above.

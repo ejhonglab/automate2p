@@ -40,13 +40,13 @@ def init_logging(_file):
     del h, f
 
     # Hook to log unhandled exceptions
-    def excepthook(type,value,traceback):
+    def excepthook(type, value, traceback):
         logging.error("Unhandled exception occured",
-            exc_info=(type,value,traceback)
+            exc_info=(type, value , traceback)
         )
-        #Don't need another copy of traceback on stderr
-        if old_excepthook!=sys.__excepthook__:
-            old_excepthook(type,value,traceback)
+        # Don't need another copy of traceback on stderr
+        if old_excepthook != sys.__excepthook__:
+            old_excepthook(type, value, traceback)
 
     old_excepthook = sys.excepthook
     sys.excepthook = excepthook
